@@ -1,0 +1,491 @@
+{
+  "name": "LinkedIn Job Analyzer",
+  "nodes": [
+    {
+      "parameters": {
+        "formTitle": "Job Search",
+        "formDescription": "An AI tool which search for your Job",
+        "formFields": {
+          "values": [
+            {
+              "fieldLabel": "Location",
+              "placeholder": "Lahore, Pakistan"
+            },
+            {
+              "fieldLabel": "Title",
+              "placeholder": "Agentic AI Intern"
+            },
+            {
+              "fieldLabel": "Your Resume",
+              "fieldType": "file"
+            }
+          ]
+        },
+        "options": {
+          "appendAttribution": false
+        }
+      },
+      "type": "n8n-nodes-base.formTrigger",
+      "typeVersion": 2.5,
+      "position": [
+        0,
+        0
+      ],
+      "id": "e826ca8e-3d75-4402-b335-c6588cbaa312",
+      "name": "On form submission",
+      "webhookId": "60fe59ab-6cfd-4643-beb1-245df14963c1"
+    },
+    {
+      "parameters": {
+        "operation": "pdf",
+        "binaryPropertyName": "Your_Resume",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.extractFromFile",
+      "typeVersion": 1.1,
+      "position": [
+        208,
+        0
+      ],
+      "id": "f7360778-91b2-49d1-b997-b082fc7dac6f",
+      "name": "Extract from File"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.apify.com/v2/acts/curious_coder~linkedin-jobs-scraper/run-sync-get-dataset-items?token=YOUR_APIFY_TOKEN_HERE",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ \"urls\": [\"https://www.linkedin.com/jobs/search/?keywords=\" + encodeURIComponent($('On form submission').item.json['Title']) + \"&location=\" + encodeURIComponent($('On form submission').item.json['Location']) + \"&position=1&pageNum=0\"], \"scrapeCompanyDetails\": true, \"maxJobs\": 10 }) }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        416,
+        0
+      ],
+      "id": "402804c9-6d0b-4187-b134-6d137e72fb16",
+      "name": "HTTP Request"
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        640,
+        0
+      ],
+      "id": "43f9a7b3-0924-44c1-8f1a-bdd55b2b3ee4",
+      "name": "Loop Over Items"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "94dee46f-3a2d-46ba-8d5e-6f19ffed28f7",
+              "name": "jobTitle",
+              "value": "=={{ $json.title }}",
+              "type": "string"
+            },
+            {
+              "id": "c9db7b9e-a6d0-4ef3-a465-3eddd6869d98",
+              "name": "company",
+              "value": "=={{ $json.companyName }}",
+              "type": "string"
+            },
+            {
+              "id": "1e15844c-d3d6-4df3-80c5-3e51e1bde858",
+              "name": "location",
+              "value": "=={{ $json.location }}",
+              "type": "string"
+            },
+            {
+              "id": "051cd988-126b-41d4-9010-dac6bc5541e8",
+              "name": "jobLink",
+              "value": "=={{ $json.link }}",
+              "type": "string"
+            },
+            {
+              "id": "24025877-d189-43a3-b5c6-eb2f1d107725",
+              "name": "description",
+              "value": "=={{ $json.descriptionText }}",
+              "type": "string"
+            },
+            {
+              "id": "5806cc4f-d9ab-483c-b540-75475d42f5f0",
+              "name": "postedAt",
+              "value": "=={{ $json.postedAt }}",
+              "type": "string"
+            },
+            {
+              "id": "59d4ee30-0bfd-4a78-ad18-86e79ae2296e",
+              "name": "applicants",
+              "value": "=={{ $json.applicantsCount }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        896,
+        16
+      ],
+      "id": "555db152-b8f8-47c6-8f34-807066952c98",
+      "name": "Edit Fields"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.groq.com/openai/v1/chat/completions",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer YOUR_GROQ_API_KEY_HERE"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ \"model\": \"llama-3.1-8b-instant\", \"messages\": [ { \"role\": \"system\", \"content\": \"You are a job fit analyzer. Return ONLY valid JSON, no extra text.\" }, { \"role\": \"user\", \"content\": \"Resume:\\n\" + $('Extract from File').item.json.text + \"\\n\\nJob: \" + $json.jobTitle + \" at \" + $json.company + \"\\nDescription: \" + $json.description.substring(0, 500) + \"\\n\\nReturn exactly:\\n{\\\"matchScore\\\": 0-100, \\\"reason\\\": \\\"one sentence\\\", \\\"shouldApply\\\": true/false}\" } ], \"temperature\": 0.1 }) }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        1072,
+        16
+      ],
+      "id": "60ae66da-bab5-43da-aa70-fba746f7b50d",
+      "name": "HTTP Request1"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "35159d67-600a-405c-bcb2-0091a783c092",
+              "name": "matchScore",
+              "value": "={{ JSON.parse($json.choices[0].message.content).matchScore }}",
+              "type": "string"
+            },
+            {
+              "id": "c55a4ebf-c915-4675-ad1b-37def3648996",
+              "name": "reason",
+              "value": "={{ JSON.parse($json.choices[0].message.content).reason }}",
+              "type": "string"
+            },
+            {
+              "id": "fa53420e-8425-4534-a2b7-14825fc87ae6",
+              "name": "shouldApply",
+              "value": "={{ JSON.parse($json.choices[0].message.content).shouldApply }}",
+              "type": "string"
+            },
+            {
+              "id": "e9365528-e808-4605-95e9-050c73855e93",
+              "name": "jobTitle",
+              "value": "={{ $('Edit Fields').item.json.jobTitle }}",
+              "type": "string"
+            },
+            {
+              "id": "7586ed3a-4c41-446f-a1e8-6a8206e673e5",
+              "name": "company",
+              "value": "={{ $('Edit Fields').item.json.company }}",
+              "type": "string"
+            },
+            {
+              "id": "7299816e-3fd8-48d4-a5db-8f0760b7fc9c",
+              "name": "jobLink",
+              "value": "={{ $('Edit Fields').item.json.jobLink }}",
+              "type": "string"
+            },
+            {
+              "id": "a496f9d4-374a-4488-a986-76a680e02ee1",
+              "name": "postedAt",
+              "value": "={{ $('Edit Fields').item.json.postedAt }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        1488,
+        16
+      ],
+      "id": "b3fa0a69-6cfb-4e62-8129-4f3b9fc6c424",
+      "name": "Edit Fields1"
+    },
+    {
+      "parameters": {
+        "operation": "appendOrUpdate",
+        "documentId": {
+          "__rl": true,
+          "value": "YOUR_GOOGLE_SHEET_ID_HERE",
+          "mode": "list",
+          "cachedResultName": "YOUR_SHEET_NAME_HERE",
+          "cachedResultUrl": "YOUR_SHEET_URL_HERE"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "YOUR_SHEET_TAB_ID_HERE",
+          "mode": "list",
+          "cachedResultName": "YOUR_SHEET_TAB_NAME_HERE",
+          "cachedResultUrl": "YOUR_SHEET_TAB_URL_HERE"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Job Title": "={{ $('Edit Fields').item.json.jobTitle }}",
+            "Company": "={{ $('Edit Fields').item.json.company }}",
+            "Job Link": "={{ $json.jobLink }}",
+            "Posted At": "={{ $json.postedAt }}",
+            "Match Score": "={{ $json.matchScore }}",
+            "Reason": "={{ $json.reason }}",
+            "Should Apply": "={{ $json.shouldApply }}"
+          },
+          "matchingColumns": [
+            "Job Link"
+          ],
+          "schema": [
+            {
+              "id": "Job Title",
+              "displayName": "Job Title",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Company",
+              "displayName": "Company",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Job Link",
+              "displayName": "Job Link",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Posted At",
+              "displayName": "Posted At",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Match Score",
+              "displayName": "Match Score",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Reason",
+              "displayName": "Reason",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Should Apply",
+              "displayName": "Should Apply",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {
+          "cellFormat": "RAW"
+        }
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        1696,
+        16
+      ],
+      "id": "42d42f76-0be6-4728-b0a8-41964f33f011",
+      "name": "Append or update row in sheet",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "YOUR_GOOGLE_CREDENTIAL_ID",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "amount": 10
+      },
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        1280,
+        16
+      ],
+      "id": "85d8f069-e45c-4f91-bb10-6b1c10604115",
+      "name": "Wait",
+      "webhookId": "0e9f41f4-7e26-4163-b3dd-0df2d12f42c2"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "On form submission": {
+      "main": [
+        [
+          {
+            "node": "Extract from File",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract from File": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Loop Over Items": {
+      "main": [
+        [],
+        [
+          {
+            "node": "Edit Fields",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Items",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Edit Fields": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request1": {
+      "main": [
+        [
+          {
+            "node": "Wait",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Edit Fields1": {
+      "main": [
+        [
+          {
+            "node": "Append or update row in sheet",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Append or update row in sheet": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Items",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait": {
+      "main": [
+        [
+          {
+            "node": "Edit Fields1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "308929ad-1239-42e8-b733-6febdcefbf58",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "REMOVED_FOR_PRIVACY"
+  },
+  "id": "K3s5oEk7B4twWXr5",
+  "tags": []
+}
